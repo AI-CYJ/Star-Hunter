@@ -300,6 +300,18 @@
         return formatUiText(entry, params || {});
     }
 
+    function fitTextLines(text, font, maxWidth, maxLines) {
+        ctx.save();
+        ctx.font = font;
+        const wrapped = ui.wrapText(ctx, text, maxWidth);
+        ctx.restore();
+        if (!maxLines || wrapped.length <= maxLines) return wrapped;
+        const clipped = wrapped.slice(0, maxLines);
+        const lastIndex = clipped.length - 1;
+        if (lastIndex >= 0) clipped[lastIndex] = `${clipped[lastIndex].replace(/\s+$/, '')}…`;
+        return clipped;
+    }
+
     function normalizeLanguage(language) {
         return language === 'en' ? 'en' : 'zh';
     }
@@ -3211,6 +3223,9 @@
         const outfitVariant = unlocked ? getHunterOutfitVariant(card.id) : 'primary';
         const portraitKey = getPortraitImageKey(card.id, outfitVariant);
         const portraitImage = getImageAsset(portraitKey);
+        const englishLayout = currentLanguage === 'en';
+        const titleX = x + 78;
+        const textWidth = Math.max(30, w - 92);
         ui.drawGlassPanel(ctx, {
             x: x,
             y: y,
@@ -3239,12 +3254,29 @@
         });
 
         ctx.textAlign = 'left';
+        ctx.textBaseline = 'alphabetic';
         ctx.fillStyle = unlocked ? '#f5fbff' : 'rgba(255,255,255,0.38)';
-        ctx.font = 'bold 16px "PingFang SC","Microsoft YaHei",sans-serif';
-        ctx.fillText(card.name, x + 78, y + 28);
-        ctx.fillStyle = unlocked ? 'rgba(215,230,255,0.72)' : 'rgba(255,255,255,0.22)';
-        ctx.font = '13px "PingFang SC","Microsoft YaHei",sans-serif';
-        ctx.fillText(unlocked ? card.role : uiText('roleLocked'), x + 78, y + 50);
+        ctx.font = englishLayout
+            ? 'bold 14px "PingFang SC","Microsoft YaHei",sans-serif'
+            : 'bold 16px "PingFang SC","Microsoft YaHei",sans-serif';
+        ctx.fillText(card.name, titleX, y + (englishLayout ? 24 : 28));
+
+        const roleText = unlocked ? card.role : uiText('roleLocked');
+        if (englishLayout) {
+            ui.drawParagraphBlock(ctx, {
+                text: fitTextLines(roleText, '11px "PingFang SC","Microsoft YaHei",sans-serif', textWidth, 2).join('\n'),
+                x: titleX,
+                y: y + 34,
+                maxWidth: textWidth,
+                lineHeight: 12,
+                color: unlocked ? 'rgba(215,230,255,0.72)' : 'rgba(255,255,255,0.22)',
+                font: '11px "PingFang SC","Microsoft YaHei",sans-serif'
+            });
+        } else {
+            ctx.fillStyle = unlocked ? 'rgba(215,230,255,0.72)' : 'rgba(255,255,255,0.22)';
+            ctx.font = '13px "PingFang SC","Microsoft YaHei",sans-serif';
+            ctx.fillText(roleText, titleX, y + 50);
+        }
 
         if (unlocked && hunterHasAltPortrait(card.id) && outfitVariant === 'alt') {
             ctx.fillStyle = 'rgba(255,234,174,0.92)';
@@ -3258,7 +3290,7 @@
             ctx.fillStyle = 'rgba(255,255,255,0.78)';
             ctx.font = '11px "PingFang SC","Microsoft YaHei",sans-serif';
             ctx.textAlign = 'right';
-            ctx.fillText(opts.hoverHint, x + w - 14, y + 50);
+            ctx.fillText(opts.hoverHint, x + w - 14, englishLayout ? y + h - 10 : y + 50);
             ctx.textAlign = 'left';
         }
 
@@ -3290,14 +3322,21 @@
         const leftX = W * 0.05;
         const topY = H * 0.08;
         const leftW = W * 0.48;
-        const topH = H * 0.5;
         const rightX = W * 0.56;
         const rightW = W * 0.39;
+        const topH = Math.min(H * 0.54, 330);
         const rightH = topH;
-        const bottomY = H * 0.63;
-        const bottomH = H * 0.25;
+        const panelGap = Math.max(16, H * 0.02);
+        const bottomY = topY + topH + panelGap;
+        const bottomH = Math.max(H * 0.30, H - bottomY - Math.max(16, H * 0.03));
         const hubImage = getImageAsset('background:hub');
         const hubDetailImage = getImageAsset('background:hubDetail');
+        const sidePad = 30;
+
+        // Hub 中有多段直接使用 fillText 的静态文案，需要显式重置文本对齐，
+        // 否则首次从菜单进入时会继承菜单页留下的 center 对齐状态。
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'alphabetic';
 
         ui.drawGlassPanel(ctx, {
             x: leftX,
@@ -3330,25 +3369,34 @@
         if (hubImage) drawImageCover(hubImage, leftX + 2, topY + 2, leftW - 4, topH - 4, 0.16, 26);
         if (hubDetailImage) drawImageCover(hubDetailImage, rightX + 2, topY + 2, rightW - 4, rightH - 4, 0.18, 26);
 
-        ui.drawPanelTitle(ctx, uiText('hubTitle'), leftX + 30, topY + 48, {
+        ui.drawPanelTitle(ctx, uiText('hubTitle'), leftX + sidePad, topY + 48, {
             color: '#fff2d8',
             glow: 'rgba(255,191,100,0.28)'
         });
-        ctx.fillStyle = 'rgba(255,230,190,0.74)';
-        ctx.font = '16px "PingFang SC","Microsoft YaHei",sans-serif';
-        ctx.textAlign = 'left';
-        ctx.fillText(uiText('hubSubtitle'), leftX + 30, topY + 78);
+        const hubSubtitleFont = currentLanguage === 'en'
+            ? '15px "PingFang SC","Microsoft YaHei",sans-serif'
+            : '16px "PingFang SC","Microsoft YaHei",sans-serif';
+        const hubSubtitleEndY = ui.drawParagraphBlock(ctx, {
+            text: fitTextLines(uiText('hubSubtitle'), hubSubtitleFont, leftW - sidePad * 2, currentLanguage === 'en' ? 3 : 2).join('\n'),
+            x: leftX + sidePad,
+            y: topY + 64,
+            maxWidth: leftW - sidePad * 2,
+            lineHeight: 20,
+            color: 'rgba(255,230,190,0.74)',
+            font: hubSubtitleFont
+        });
 
-        ui.drawDivider(ctx, leftX + 30, topY + 108, leftW - 60, 'rgba(255,200,140,0.22)');
+        ui.drawDivider(ctx, leftX + sidePad, hubSubtitleEndY + 12, leftW - sidePad * 2, 'rgba(255,200,140,0.22)');
 
-        ui.drawParagraphBlock(ctx, {
-            text: getMainlineProgressText(),
-            x: leftX + 30,
-            y: topY + 132,
-            maxWidth: leftW - 60,
-            lineHeight: 28,
+        const progressFont = 'bold 16px "PingFang SC","Microsoft YaHei",sans-serif';
+        const progressEndY = ui.drawParagraphBlock(ctx, {
+            text: fitTextLines(getMainlineProgressText(), progressFont, leftW - sidePad * 2, currentLanguage === 'en' ? 3 : 2).join('\n'),
+            x: leftX + sidePad,
+            y: hubSubtitleEndY + 28,
+            maxWidth: leftW - sidePad * 2,
+            lineHeight: 24,
             color: '#f4f8ff',
-            font: 'bold 18px "PingFang SC","Microsoft YaHei",sans-serif'
+            font: progressFont
         });
 
         const chapter = storyData.chapters[narrativeProgress.currentChapterId];
@@ -3356,10 +3404,11 @@
         const progressValue = narrativeProgress.chapterCompleted
             ? 1
             : Math.min(1, narrativeProgress.currentSceneIndex / totalScenes);
+        const progressBarY = progressEndY + 14;
         ui.drawProgressBar(ctx, {
-            x: leftX + 30,
-            y: topY + 208,
-            w: leftW - 60,
+            x: leftX + sidePad,
+            y: progressBarY,
+            w: leftW - sidePad * 2,
             h: 14,
             progress: progressValue,
             colorStart: '#ffca81',
@@ -3368,8 +3417,8 @@
 
         ctx.fillStyle = 'rgba(226,237,255,0.72)';
         ctx.font = '14px "PingFang SC","Microsoft YaHei",sans-serif';
-        ctx.fillText(uiText('archivesUnlocked', { count: narrativeProgress.unlockedArchives.length }), leftX + 30, topY + 250);
-        ctx.fillText(uiText('hiddenFragmentsCount', { current: narrativeProgress.hiddenFragments }), leftX + 30, topY + 278);
+        ctx.fillText(uiText('archivesUnlocked', { count: narrativeProgress.unlockedArchives.length }), leftX + sidePad, progressBarY + 32);
+        ctx.fillText(uiText('hiddenFragmentsCount', { current: narrativeProgress.hiddenFragments }), leftX + sidePad, progressBarY + 58);
 
         const hiddenStory = storyData.hiddenStories.maillenCaptain;
         const hiddenUnlocked = sceneApi.isHiddenStoryUnlocked(narrativeProgress, hiddenStory.id);
@@ -3391,22 +3440,49 @@
 
         ctx.fillStyle = 'rgba(255,230,190,0.88)';
         ctx.font = 'bold 18px "PingFang SC","Microsoft YaHei",sans-serif';
-        ctx.fillText(uiText('actionConsole'), rightX + 30, topY + 44);
-        ctx.fillStyle = hiddenForceEligible ? 'rgba(255,219,157,0.86)' : 'rgba(226,237,255,0.66)';
-        ctx.font = hiddenForceEligible ? 'bold 13px "PingFang SC","Microsoft YaHei",sans-serif' : '14px "PingFang SC","Microsoft YaHei",sans-serif';
-        ctx.fillText(hiddenStatus, rightX + 30, topY + 70);
+        ctx.fillText(uiText('actionConsole'), rightX + sidePad, topY + 44);
 
-        const buttonX = rightX + 30;
-        const buttonW = rightW - 60;
+        const buttonX = rightX + sidePad;
+        const buttonW = rightW - sidePad * 2;
+        const buttonGap = 8;
+        const mainButtonH = 44;
+        const resetButtonH = 36;
+        const actionTotalHeight = mainButtonH * 3 + resetButtonH + buttonGap * 3;
+        const hiddenStatusFont = hiddenForceEligible || currentLanguage === 'en'
+            ? 'bold 13px "PingFang SC","Microsoft YaHei",sans-serif'
+            : '14px "PingFang SC","Microsoft YaHei",sans-serif';
+        const hiddenStatusLineHeight = currentLanguage === 'en' ? 18 : 19;
+        const hiddenStatusMaxLines = Math.max(
+            1,
+            Math.floor((rightH - actionTotalHeight - 86) / hiddenStatusLineHeight)
+        );
+        const hiddenStatusEndY = ui.drawParagraphBlock(ctx, {
+            text: fitTextLines(hiddenStatus, hiddenStatusFont, buttonW, hiddenStatusMaxLines).join('\n'),
+            x: buttonX,
+            y: topY + 56,
+            maxWidth: buttonW,
+            lineHeight: hiddenStatusLineHeight,
+            color: hiddenForceEligible ? 'rgba(255,219,157,0.86)' : 'rgba(226,237,255,0.66)',
+            font: hiddenStatusFont
+        });
+        const buttonFont = currentLanguage === 'en'
+            ? `bold ${buttonW < 360 ? 15 : 16}px "PingFang SC","Microsoft YaHei",sans-serif`
+            : 'bold 18px "PingFang SC","Microsoft YaHei",sans-serif';
+        const resetButtonFont = currentLanguage === 'en'
+            ? 'bold 15px "PingFang SC","Microsoft YaHei",sans-serif'
+            : 'bold 16px "PingFang SC","Microsoft YaHei",sans-serif';
+        const firstButtonY = hiddenStatusEndY + 10;
+
         drawActionButton({
             id: 'hub-mainline',
             x: buttonX,
-            y: topY + 104,
+            y: firstButtonY,
             w: buttonW,
-            h: 52,
+            h: mainButtonH,
             label: narrativeProgress.chapterCompleted ? uiText('mainlineDoneButton') : uiText('mainlineContinueButton'),
             top: '#5a8bff',
             bottom: '#2749a7',
+            font: buttonFont,
             onClick: function () {
                 if (narrativeProgress.chapterCompleted) {
                     setOverlayNotice(uiText('mainlineDoneNotice'), '#d7e8ff');
@@ -3418,12 +3494,13 @@
         drawActionButton({
             id: 'hub-archive',
             x: buttonX,
-            y: topY + 174,
+            y: firstButtonY + mainButtonH + buttonGap,
             w: buttonW,
-            h: 52,
+            h: mainButtonH,
             label: uiText('enterArchive'),
             top: '#4a7fce',
             bottom: '#244a86',
+            font: buttonFont,
             onClick: function () {
                 openArchive(selectedArchiveId);
             }
@@ -3431,9 +3508,9 @@
         drawActionButton({
             id: 'hub-hidden',
             x: buttonX,
-            y: topY + 244,
+            y: firstButtonY + (mainButtonH + buttonGap) * 2,
             w: buttonW,
-            h: 52,
+            h: mainButtonH,
             label: hiddenCompleted
                 ? uiText('replayHidden')
                 : hiddenUnlocked
@@ -3443,6 +3520,9 @@
                         : uiText('hiddenLocked'),
             top: hiddenUnlocked ? '#68a6ff' : '#485163',
             bottom: hiddenUnlocked ? '#2853a6' : '#262b35',
+            font: currentLanguage === 'en'
+                ? `bold ${buttonW < 360 ? 14 : 15}px "PingFang SC","Microsoft YaHei",sans-serif`
+                : buttonFont,
             onClick: function () {
                 if (!hiddenUnlocked) {
                     handleHiddenLockedAction(hiddenStory);
@@ -3454,12 +3534,13 @@
         drawActionButton({
             id: 'hub-reset-story',
             x: buttonX,
-            y: topY + 314,
+            y: firstButtonY + (mainButtonH + buttonGap) * 3,
             w: buttonW,
-            h: 42,
+            h: resetButtonH,
             label: storyResetConfirmUntil > gameTime ? uiText('storyResetConfirmButton') : uiText('storyResetButton'),
             top: storyResetConfirmUntil > gameTime ? '#ff966d' : '#8a5b5b',
             bottom: storyResetConfirmUntil > gameTime ? '#c04833' : '#5a3131',
+            font: resetButtonFont,
             onClick: function () {
                 handleStoryResetAction();
             }
@@ -3506,32 +3587,52 @@
             color: '#fff2d8',
             glow: 'rgba(130,178,255,0.24)'
         });
-        ctx.fillStyle = 'rgba(230,237,255,0.70)';
-        ctx.font = '14px "PingFang SC","Microsoft YaHei",sans-serif';
-        ctx.textAlign = 'left';
-        ctx.fillText(uiText('huntersSubtitle'), hunterPanel.x + 24, hunterPanel.y + 60);
-
-        ui.drawInfoChip(ctx, {
+        let previewCards = unlockedHunterCards.slice(0, W < 1180 ? 3 : 4);
+        const previewGap = 12;
+        const previewCardH = Math.min(104, Math.max(78, hunterPanel.h - 60));
+        const previewCardW = Math.round(previewCardH * 0.86);
+        let previewBlockW = previewCards.length * previewCardW + Math.max(0, previewCards.length - 1) * previewGap;
+        while (previewCards.length > 2 && hunterPanel.w - 48 - previewBlockW < 320) {
+            previewCards = previewCards.slice(0, previewCards.length - 1);
+            previewBlockW = previewCards.length * previewCardW + Math.max(0, previewCards.length - 1) * previewGap;
+        }
+        const previewStartX = previewCards.length
+            ? hunterPanel.x + hunterPanel.w - 24 - previewBlockW
+            : hunterPanel.x + hunterPanel.w - 24;
+        const previewY = hunterPanel.y + Math.max(18, (hunterPanel.h - previewCardH) / 2 - 4);
+        const hunterTextMaxWidth = Math.max(220, previewStartX - hunterPanel.x - 46);
+        const hunterSubtitleFont = '13px "PingFang SC","Microsoft YaHei",sans-serif';
+        const hunterSubtitleEndY = ui.drawParagraphBlock(ctx, {
+            text: fitTextLines(uiText('huntersSubtitle'), hunterSubtitleFont, hunterTextMaxWidth, 2).join('\n'),
             x: hunterPanel.x + 24,
-            y: hunterPanel.y + 76,
+            y: hunterPanel.y + 48,
+            maxWidth: hunterTextMaxWidth,
+            lineHeight: 18,
+            color: 'rgba(230,237,255,0.70)',
+            font: hunterSubtitleFont
+        });
+
+        const firstChipRect = ui.drawInfoChip(ctx, {
+            x: hunterPanel.x + 24,
+            y: hunterSubtitleEndY + 10,
             text: uiText('huntersUnlocked', { current: unlockedHunterCards.length, total: hunterCards.length }),
             color: '#eaf6ff',
             fill: 'rgba(28,42,82,0.88)'
         });
+        const swappableText = uiText('huntersSwappable', { count: swappableCount });
+        ctx.save();
+        ctx.font = 'bold 13px "PingFang SC","Microsoft YaHei",sans-serif';
+        const secondChipW = ctx.measureText(swappableText).width + 28;
+        ctx.restore();
+        const sameRowForSecondChip = firstChipRect.x + firstChipRect.w + 10 + secondChipW <= hunterPanel.x + 24 + hunterTextMaxWidth;
         ui.drawInfoChip(ctx, {
-            x: hunterPanel.x + 156,
-            y: hunterPanel.y + 76,
-            text: uiText('huntersSwappable', { count: swappableCount }),
+            x: sameRowForSecondChip ? firstChipRect.x + firstChipRect.w + 10 : hunterPanel.x + 24,
+            y: sameRowForSecondChip ? firstChipRect.y : firstChipRect.y + 36,
+            text: swappableText,
             color: '#fff4d4',
             fill: 'rgba(80,54,106,0.88)'
         });
 
-        const previewCards = unlockedHunterCards.slice(0, 4);
-        const previewCardW = 96;
-        const previewCardH = 112;
-        const previewGap = 12;
-        const previewStartX = hunterPanel.x + hunterPanel.w - 24 - previewCards.length * previewCardW - Math.max(0, previewCards.length - 1) * previewGap;
-        const previewY = hunterPanel.y + 28;
         for (let index = 0; index < previewCards.length; index += 1) {
             const card = previewCards[index];
             const portraitImage = getImageAsset(getPortraitImageKey(card.id, getHunterOutfitVariant(card.id)));
@@ -3557,12 +3658,15 @@
         drawActionButton({
             id: 'hub-hunters',
             x: hunterPanel.x + 24,
-            y: hunterPanel.y + hunterPanel.h - 66,
-            w: 188,
+            y: hunterPanel.y + hunterPanel.h - 54,
+            w: currentLanguage === 'en' ? 208 : 188,
             h: 44,
             label: uiText('enterHunters'),
             top: '#6097ff',
             bottom: '#284fa5',
+            font: currentLanguage === 'en'
+                ? 'bold 15px "PingFang SC","Microsoft YaHei",sans-serif'
+                : 'bold 18px "PingFang SC","Microsoft YaHei",sans-serif',
             onClick: function () {
                 openHunters();
             }
@@ -3582,6 +3686,7 @@
         const selectedCard = getHunterCardById(selectedHunterId);
         const selectedEntry = getHunterArchiveEntry(selectedHunterId);
         const selectedVariant = getHunterOutfitVariant(selectedHunterId);
+        const englishLayout = currentLanguage === 'en';
         const hunterBgImage = getImageAsset('background:hunters') || getImageAsset('background:hubDetail') || getImageAsset('background:hub');
 
         const panelX = W * 0.05;
@@ -3591,13 +3696,18 @@
         const rosterW = Math.min(400, panelW * 0.34);
         const detailX = panelX + rosterW + 18;
         const detailW = panelW - rosterW - 18;
-        const previewW = Math.min(340, detailW * 0.42);
-        const previewH = panelH - 136;
+        const previewW = englishLayout
+            ? Math.min(300, detailW * 0.36)
+            : Math.min(340, detailW * 0.42);
+        const previewH = englishLayout ? panelH - 112 : panelH - 136;
         const previewX = detailX + detailW - previewW - 26;
-        const previewY = panelY + 82;
+        const previewY = englishLayout ? panelY + 58 : panelY + 82;
         const textX = detailX + 28;
-        const textMaxWidth = detailW - previewW - 72;
+        const textMaxWidth = Math.max(220, previewX - textX - 28);
         const unlockedHunterCards = getUnlockedHunterCards();
+
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'alphabetic';
 
         ui.drawGlassPanel(ctx, {
             x: panelX,
@@ -3626,28 +3736,46 @@
             color: '#f4fbff',
             glow: 'rgba(122,170,255,0.24)'
         });
-        ctx.fillStyle = 'rgba(212,228,255,0.68)';
-        ctx.font = '14px "PingFang SC","Microsoft YaHei",sans-serif';
-        ctx.textAlign = 'left';
-        ctx.fillText(uiText('huntersPageSubtitle'), panelX + 24, panelY + 68);
+        let subtitleEndY = panelY + 68;
+        if (englishLayout) {
+            subtitleEndY = ui.drawParagraphBlock(ctx, {
+                text: fitTextLines(
+                    uiText('huntersPageSubtitle'),
+                    '13px "PingFang SC","Microsoft YaHei",sans-serif',
+                    rosterW - 48,
+                    3
+                ).join('\n'),
+                x: panelX + 24,
+                y: panelY + 50,
+                maxWidth: rosterW - 48,
+                lineHeight: 16,
+                color: 'rgba(212,228,255,0.68)',
+                font: '13px "PingFang SC","Microsoft YaHei",sans-serif'
+            });
+        } else {
+            ctx.fillStyle = 'rgba(212,228,255,0.68)';
+            ctx.font = '14px "PingFang SC","Microsoft YaHei",sans-serif';
+            ctx.fillText(uiText('huntersPageSubtitle'), panelX + 24, panelY + 68);
+        }
 
-        ui.drawInfoChip(ctx, {
+        const unlockedChipRect = ui.drawInfoChip(ctx, {
             x: panelX + 24,
-            y: panelY + 84,
+            y: englishLayout ? subtitleEndY + 10 : panelY + 84,
             text: uiText('huntersUnlocked', { current: unlockedHunterCards.length, total: storyData.characterCards.length }),
             color: '#eaf6ff',
             fill: 'rgba(32,49,90,0.88)'
         });
 
         const columns = 2;
-        const gap = 12;
+        const gap = englishLayout ? 10 : 12;
         const cardW = (rosterW - 48 - gap) / columns;
-        const cardH = 76;
+        const cardH = englishLayout ? 78 : 76;
+        const cardsStartY = englishLayout ? unlockedChipRect.y + unlockedChipRect.h + 16 : panelY + 130;
         let index = 0;
         for (const card of storyData.characterCards) {
             const row = Math.floor(index / columns);
             const column = index % columns;
-            drawCharacterCard(card, panelX + 24 + column * (cardW + gap), panelY + 130 + row * (cardH + gap), cardW, cardH, {
+            drawCharacterCard(card, panelX + 24 + column * (cardW + gap), cardsStartY + row * (cardH + gap), cardW, cardH, {
                 unlocked: isHunterUnlocked(card.id),
                 selected: selectedCard && selectedCard.id === card.id,
                 hoverHint: uiText('hoverSelect'),
@@ -3662,11 +3790,32 @@
 
         ui.drawPanelTitle(ctx, selectedCard.name, textX, panelY + 44, {
             color: '#ffffff',
-            glow: 'rgba(130,182,255,0.20)'
+            glow: 'rgba(130,182,255,0.20)',
+            font: englishLayout
+                ? 'bold 24px "PingFang SC","Microsoft YaHei",sans-serif'
+                : 'bold 28px "PingFang SC","Microsoft YaHei",sans-serif'
         });
-        ctx.fillStyle = 'rgba(213,229,255,0.70)';
-        ctx.font = '16px "PingFang SC","Microsoft YaHei",sans-serif';
-        ctx.fillText(selectedCard.role, textX, panelY + 72);
+        let roleEndY = panelY + 72;
+        if (englishLayout) {
+            roleEndY = ui.drawParagraphBlock(ctx, {
+                text: fitTextLines(
+                    selectedCard.role,
+                    '15px "PingFang SC","Microsoft YaHei",sans-serif',
+                    textMaxWidth,
+                    2
+                ).join('\n'),
+                x: textX,
+                y: panelY + 54,
+                maxWidth: textMaxWidth,
+                lineHeight: 18,
+                color: 'rgba(213,229,255,0.70)',
+                font: '15px "PingFang SC","Microsoft YaHei",sans-serif'
+            });
+        } else {
+            ctx.fillStyle = 'rgba(213,229,255,0.70)';
+            ctx.font = '16px "PingFang SC","Microsoft YaHei",sans-serif';
+            ctx.fillText(selectedCard.role, textX, panelY + 72);
+        }
 
         const currentPortraitImage = getImageAsset(getPortraitImageKey(selectedCard.id, selectedVariant));
         drawArtworkFrame(currentPortraitImage, previewX, previewY, previewW, previewH, {
@@ -3686,51 +3835,95 @@
         ctx.roundRect(previewX + 2, previewY + 2, previewW - 4, previewH - 4, 24);
         ctx.fill();
         ctx.fillStyle = 'rgba(255,255,255,0.12)';
-        ctx.font = 'bold 28px "PingFang SC","Microsoft YaHei",sans-serif';
+        ctx.font = englishLayout
+            ? 'bold 24px "PingFang SC","Microsoft YaHei",sans-serif'
+            : 'bold 28px "PingFang SC","Microsoft YaHei",sans-serif';
         ctx.textAlign = 'right';
         ctx.fillText(selectedCard.name, previewX + previewW - 16, previewY + previewH - 24);
         ctx.restore();
 
+        const quoteY = englishLayout ? roleEndY + 18 : panelY + 112;
+        const quoteFont = englishLayout
+            ? 'italic 16px "PingFang SC","Microsoft YaHei",sans-serif'
+            : 'italic 17px "PingFang SC","Microsoft YaHei",sans-serif';
         const quoteEndY = ui.drawParagraphBlock(ctx, {
-            text: selectedEntry.quote,
+            text: englishLayout
+                ? fitTextLines(selectedEntry.quote, quoteFont, textMaxWidth, 3).join('\n')
+                : selectedEntry.quote,
             x: textX,
-            y: panelY + 112,
+            y: quoteY,
             maxWidth: textMaxWidth,
-            lineHeight: 26,
+            lineHeight: englishLayout ? 22 : 26,
             color: 'rgba(156,216,255,0.88)',
-            font: 'italic 17px "PingFang SC","Microsoft YaHei",sans-serif'
+            font: quoteFont
         });
 
         ui.drawDivider(ctx, textX, quoteEndY + 8, textMaxWidth, 'rgba(156,216,255,0.18)');
 
         const introText = (selectedEntry.body || []).slice(0, 2).join('\n\n');
+        const bodyFont = englishLayout
+            ? '15px "PingFang SC","Microsoft YaHei",sans-serif'
+            : '16px "PingFang SC","Microsoft YaHei",sans-serif';
+        const bodyLineHeight = englishLayout ? 24 : 28;
+        const bodyMaxLines = englishLayout
+            ? Math.max(4, Math.floor((panelY + 306 - (quoteEndY + 20)) / bodyLineHeight))
+            : 99;
         const bodyEndY = ui.drawParagraphBlock(ctx, {
-            text: introText,
+            text: englishLayout
+                ? fitTextLines(introText, bodyFont, textMaxWidth, bodyMaxLines).join('\n')
+                : introText,
             x: textX,
-            y: quoteEndY + 26,
+            y: quoteEndY + (englishLayout ? 20 : 26),
             maxWidth: textMaxWidth,
-            lineHeight: 28,
+            lineHeight: bodyLineHeight,
             color: 'rgba(239,245,255,0.84)',
-            font: '16px "PingFang SC","Microsoft YaHei",sans-serif'
+            font: bodyFont
         });
 
+        const outfitTitleY = Math.max(bodyEndY + (englishLayout ? 14 : 20), englishLayout ? panelY + 308 : panelY + 314);
         ctx.fillStyle = '#fff1d5';
         ctx.font = 'bold 18px "PingFang SC","Microsoft YaHei",sans-serif';
-        ctx.fillText(uiText('currentOutfit'), textX, Math.max(bodyEndY + 20, panelY + 314));
-        ctx.fillStyle = 'rgba(212,228,255,0.66)';
-        ctx.font = '14px "PingFang SC","Microsoft YaHei",sans-serif';
-        ctx.fillText(uiText('outfitHint'), textX, Math.max(bodyEndY + 46, panelY + 340));
+        ctx.fillText(uiText('currentOutfit'), textX, outfitTitleY);
 
-        const outfitButtonY = Math.max(bodyEndY + 64, panelY + 358);
+        let outfitHintEndY = Math.max(bodyEndY + 46, panelY + 340);
+        if (englishLayout) {
+            outfitHintEndY = ui.drawParagraphBlock(ctx, {
+                text: fitTextLines(
+                    uiText('outfitHint'),
+                    '12px "PingFang SC","Microsoft YaHei",sans-serif',
+                    textMaxWidth,
+                    2
+                ).join('\n'),
+                x: textX,
+                y: outfitTitleY + 10,
+                maxWidth: textMaxWidth,
+                lineHeight: 15,
+                color: 'rgba(212,228,255,0.66)',
+                font: '12px "PingFang SC","Microsoft YaHei",sans-serif'
+            });
+        } else {
+            ctx.fillStyle = 'rgba(212,228,255,0.66)';
+            ctx.font = '14px "PingFang SC","Microsoft YaHei",sans-serif';
+            ctx.fillText(uiText('outfitHint'), textX, outfitHintEndY);
+        }
+
+        const outfitButtonW = englishLayout ? 150 : 164;
+        const outfitButtonGap = englishLayout ? 12 : 14;
+        const outfitButtonY = englishLayout
+            ? Math.max(outfitHintEndY + 12, panelY + 344)
+            : Math.max(bodyEndY + 64, panelY + 358);
         drawActionButton({
             id: `hunter-primary-${selectedCard.id}`,
             x: textX,
             y: outfitButtonY,
-            w: 164,
+            w: outfitButtonW,
             h: 46,
             label: uiText('primaryOutfit'),
             top: selectedVariant === 'primary' ? '#79acff' : '#536780',
             bottom: selectedVariant === 'primary' ? '#315eb3' : '#2f3847',
+            font: englishLayout
+                ? 'bold 15px "PingFang SC","Microsoft YaHei",sans-serif'
+                : 'bold 18px "PingFang SC","Microsoft YaHei",sans-serif',
             onClick: function () {
                 setHunterOutfitVariant(selectedCard.id, 'primary');
             }
@@ -3739,22 +3932,25 @@
         if (hunterHasAltPortrait(selectedCard.id)) {
             drawActionButton({
                 id: `hunter-alt-${selectedCard.id}`,
-                x: textX + 178,
+                x: textX + outfitButtonW + outfitButtonGap,
                 y: outfitButtonY,
-                w: 164,
+                w: outfitButtonW,
                 h: 46,
                 label: uiText('altOutfit'),
                 top: selectedVariant === 'alt' ? '#8d9eff' : '#5f5f87',
                 bottom: selectedVariant === 'alt' ? '#4a54c8' : '#36354d',
+                font: englishLayout
+                    ? 'bold 15px "PingFang SC","Microsoft YaHei",sans-serif'
+                    : 'bold 18px "PingFang SC","Microsoft YaHei",sans-serif',
                 onClick: function () {
                     setHunterOutfitVariant(selectedCard.id, 'alt');
                 }
             });
         } else {
             ui.drawGlassPanel(ctx, {
-                x: textX + 178,
+                x: textX + outfitButtonW + outfitButtonGap,
                 y: outfitButtonY,
-                w: 164,
+                w: outfitButtonW,
                 h: 46,
                 radius: 18,
                 fill: 'rgba(18,24,40,0.72)',
@@ -3762,36 +3958,61 @@
                 shadow: 'rgba(0,0,0,0)'
             });
             ctx.fillStyle = 'rgba(255,255,255,0.52)';
-            ctx.font = '13px "PingFang SC","Microsoft YaHei",sans-serif';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText(uiText('onlyPrimaryOutfit'), textX + 178 + 82, outfitButtonY + 24);
-            ctx.textAlign = 'left';
-            ctx.textBaseline = 'alphabetic';
+            if (englishLayout) {
+                const disabledLines = fitTextLines(
+                    uiText('onlyPrimaryOutfit'),
+                    '11px "PingFang SC","Microsoft YaHei",sans-serif',
+                    outfitButtonW - 18,
+                    2
+                );
+                ctx.font = '11px "PingFang SC","Microsoft YaHei",sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                const disabledCenterX = textX + outfitButtonW + outfitButtonGap + outfitButtonW / 2;
+                const baseY = outfitButtonY + 24 - ((disabledLines.length - 1) * 6);
+                for (let index = 0; index < disabledLines.length; index += 1) {
+                    ctx.fillText(disabledLines[index], disabledCenterX, baseY + index * 12);
+                }
+                ctx.textAlign = 'left';
+                ctx.textBaseline = 'alphabetic';
+            } else {
+                ctx.font = '13px "PingFang SC","Microsoft YaHei",sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(uiText('onlyPrimaryOutfit'), textX + 178 + 82, outfitButtonY + 24);
+                ctx.textAlign = 'left';
+                ctx.textBaseline = 'alphabetic';
+            }
         }
 
         drawActionButton({
             id: `hunter-dialogue-${selectedCard.id}`,
             x: textX,
             y: panelY + panelH - 72,
-            w: 188,
+            w: englishLayout ? 176 : 188,
             h: 46,
             label: uiText('viewShortDialogue'),
             top: '#4d8dee',
             bottom: '#2a5aa8',
+            font: englishLayout
+                ? 'bold 15px "PingFang SC","Microsoft YaHei",sans-serif'
+                : 'bold 18px "PingFang SC","Microsoft YaHei",sans-serif',
             onClick: function () {
                 openHunterConversation(selectedCard.id);
             }
         });
         drawActionButton({
             id: 'hunters-back',
-            x: detailX + detailW - 188,
+            x: detailX + detailW - (englishLayout ? 166 : 188),
             y: panelY + panelH - 72,
-            w: 160,
+            w: englishLayout ? 140 : 160,
             h: 46,
             label: uiText('returnToHub'),
             top: '#6b7a96',
             bottom: '#39445a',
+            font: englishLayout
+                ? 'bold 15px "PingFang SC","Microsoft YaHei",sans-serif'
+                : 'bold 18px "PingFang SC","Microsoft YaHei",sans-serif',
             onClick: function () {
                 goToHub();
             }
@@ -3807,15 +4028,17 @@
         const panelX = pad;
         const panelY = headerY + 20;
         const panelW = W - pad * 2;
-        const panelH = Math.max(320, H - panelY - 190);
+        const panelH = Math.max(340, H - panelY - 168);
         const infoGap = 16;
         const stacked = panelW < 980;
-        const topPanelH = stacked ? Math.max(132, Math.min(210, panelH * 0.38)) : Math.min(280, panelH * 0.48);
+        const topPanelH = stacked
+            ? Math.max(150, Math.min(236, panelH * 0.44))
+            : Math.max(220, Math.min(320, panelH * 0.58));
         const leftW = stacked ? panelW : Math.floor(panelW * 0.64);
         const rightW = stacked ? panelW : panelW - leftW - infoGap;
         const rightX = stacked ? panelX : panelX + leftW + infoGap;
         const rightY = stacked ? panelY + topPanelH + infoGap : panelY;
-        const rightH = stacked ? Math.max(86, Math.min(150, panelH * 0.22)) : topPanelH;
+        const rightH = stacked ? Math.max(104, Math.min(176, panelH * 0.26)) : topPanelH;
         const logPanelY = stacked ? rightY + rightH + infoGap : panelY + topPanelH + infoGap;
         const logPanelH = panelY + panelH - logPanelY;
 
@@ -3842,19 +4065,19 @@
         });
 
         const innerPad = 26;
-        ui.drawPanelTitle(ctx, view.roomName, panelX + innerPad, panelY + 36, {
+        ui.drawPanelTitle(ctx, view.roomName, panelX + innerPad, panelY + 34, {
             color: '#ffffff',
-            font: 'bold 24px "PingFang SC","Microsoft YaHei",sans-serif'
+            font: 'bold 22px "PingFang SC","Microsoft YaHei",sans-serif'
         });
-        ui.drawDivider(ctx, panelX + innerPad, panelY + 52, leftW - innerPad * 2, 'rgba(156,208,255,0.18)');
+        ui.drawDivider(ctx, panelX + innerPad, panelY + 64, leftW - innerPad * 2, 'rgba(156,208,255,0.18)');
         ui.drawParagraphBlock(ctx, {
             text: view.roomDescription,
             x: panelX + innerPad,
-            y: panelY + 70,
+            y: panelY + 80,
             maxWidth: leftW - innerPad * 2,
-            lineHeight: 24,
+            lineHeight: 22,
             color: 'rgba(235,242,255,0.88)',
-            font: '15px "PingFang SC","Microsoft YaHei",sans-serif'
+            font: '14px "PingFang SC","Microsoft YaHei",sans-serif'
         });
 
         ui.drawGlassPanel(ctx, {
@@ -3880,14 +4103,19 @@
         ];
         if (view.missionCommand) facts.push(uiText('adventureCommand', { value: view.missionCommand }));
         if (view.hints.length) facts.push(uiText('adventureHints', { value: view.hints.slice(0, 3).join(' / ') }));
+        const intelFont = rightW < 340
+            ? '13px "PingFang SC","Microsoft YaHei",sans-serif'
+            : '14px "PingFang SC","Microsoft YaHei",sans-serif';
+        const intelLineHeight = rightW < 340 ? 18 : 20;
+        const intelMaxLines = Math.max(4, Math.floor((rightH - 82) / intelLineHeight));
         ui.drawParagraphBlock(ctx, {
-            text: facts.join('\n'),
+            text: fitTextLines(facts.join('\n'), intelFont, rightW - 44, intelMaxLines).join('\n'),
             x: rightX + 22,
             y: rightY + 60,
             maxWidth: rightW - 44,
-            lineHeight: 22,
+            lineHeight: intelLineHeight,
             color: 'rgba(225,236,255,0.80)',
-            font: '14px "PingFang SC","Microsoft YaHei",sans-serif'
+            font: intelFont
         });
 
         ui.drawGlassPanel(ctx, {

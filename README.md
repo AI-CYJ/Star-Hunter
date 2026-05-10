@@ -4,6 +4,10 @@
 
 ## How to run
 
+### Play online
+
+Open **[https://ai-cyj.github.io/Star-Hunter/Star-Hunter.html](https://ai-cyj.github.io/Star-Hunter/Star-Hunter.html)** in a browser to play — no download or local server required (hosted with **GitHub Pages**).
+
 ### Option A — Open the HTML file (quickest)
 
 1. Clone or download this repository.

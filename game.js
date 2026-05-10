@@ -375,7 +375,9 @@
             ? rawStoryData.locales[normalizedLanguage]
             : null;
         const merged = overlay ? deepMergeLocalized(rawStoryData, overlay) : deepClone(rawStoryData);
-        return localizeNode(merged, normalizedLanguage);
+        const localized = localizeNode(merged, normalizedLanguage);
+        delete localized.locales;
+        return localized;
     }
 
     let currentLanguage = getSavedLanguage();

@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Star Hunter</title>
+    <style>
+        :root { --bg: #000010; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: var(--bg); overflow: hidden;
+            font-family: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            cursor: default; user-select: none; -webkit-user-select: none;
+            -webkit-tap-highlight-color: transparent; touch-action: none;
+            height: 100vh; width: 100vw; display: flex; align-items: center; justify-content: center;
+        }
+        canvas { display: block; position: absolute; top: 0; left: 0; }
+        #mobile-hint {
+            display: none; position: absolute; bottom: 40px; width: 100%; text-align: center;
+            color: rgba(255,255,255,0.5); font-size: 14px; letter-spacing: 2px; pointer-events: none;
+        }
+        #language-switcher {
+            position: absolute;
+            top: 16px;
+            right: 16px;
+            z-index: 24;
+            display: none;
+            gap: 8px;
+            align-items: center;
+            pointer-events: auto;
+        }
+        .language-switch-button {
+            border: 1px solid rgba(160, 204, 255, 0.22);
+            background: rgba(8, 14, 30, 0.72);
+            color: rgba(232, 242, 255, 0.86);
+            border-radius: 999px;
+            padding: 8px 14px;
+            font-size: 13px;
+            line-height: 1;
+            cursor: pointer;
+            backdrop-filter: blur(10px);
+            transition: border-color .15s ease, background .15s ease, color .15s ease;
+        }
+        .language-switch-button:hover {
+            border-color: rgba(180, 220, 255, 0.38);
+            background: rgba(18, 30, 58, 0.88);
+        }
+        .language-switch-button.active {
+            background: linear-gradient(180deg, #67a4ff 0%, #315fbe 100%);
+            border-color: rgba(210, 232, 255, 0.56);
+            color: #ffffff;
+        }
+        #adventure-input-layer {
+            position: absolute;
+            left: 50%;
+            bottom: 18px;
+            transform: translateX(-50%);
+            width: min(980px, calc(100vw - 24px));
+            display: none;
+            z-index: 20;
+        }
+        #adventure-input-shell {
+            pointer-events: auto;
+            border: 1px solid rgba(156, 200, 255, 0.22);
+            background: rgba(7, 12, 28, 0.78);
+            backdrop-filter: blur(12px);
+            border-radius: 18px;
+            box-shadow: 0 18px 40px rgba(0, 0, 0, 0.28);
+            padding: 12px;
+            touch-action: auto;
+        }
+        #adventure-status {
+            color: rgba(225, 236, 255, 0.82);
+            font-size: 12px;
+            line-height: 1.4;
+            margin-bottom: 10px;
+        }
+        #adventure-command-form {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        #adventure-command-input {
+            flex: 1;
+            min-width: 0;
+            border: 1px solid rgba(160, 204, 255, 0.24);
+            background: rgba(10, 17, 35, 0.92);
+            color: #eef6ff;
+            border-radius: 12px;
+            padding: 12px 14px;
+            font-size: 15px;
+            outline: none;
+            transition: border-color .15s ease, box-shadow .15s ease;
+            user-select: text;
+            -webkit-user-select: text;
+            touch-action: auto;
+        }
+        #adventure-command-input::placeholder {
+            color: rgba(214, 226, 244, 0.42);
+        }
+        #adventure-command-input:focus {
+            border-color: rgba(138, 196, 255, 0.62);
+            box-shadow: 0 0 0 3px rgba(98, 162, 255, 0.12);
+        }
+        #adventure-command-submit {
+            border: 0;
+            border-radius: 12px;
+            padding: 12px 18px;
+            font-size: 14px;
+            font-weight: 700;
+            color: #ffffff;
+            background: linear-gradient(180deg, #5e9cff 0%, #355fc8 100%);
+            cursor: pointer;
+            touch-action: auto;
+        }
+        #adventure-command-submit:hover {
+            filter: brightness(1.08);
+        }
+        #adventure-quick-verbs {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 10px;
+        }
+        .quick-verb {
+            border: 1px solid rgba(160, 204, 255, 0.18);
+            background: rgba(255, 255, 255, 0.06);
+            color: rgba(232, 242, 255, 0.88);
+            border-radius: 999px;
+            padding: 7px 12px;
+            font-size: 12px;
+            cursor: pointer;
+            touch-action: auto;
+        }
+        .quick-verb:hover {
+            background: rgba(255, 255, 255, 0.12);
+        }
+        @media (max-width: 768px) {
+            #mobile-hint { display: block; }
+            body { cursor: default; }
+            #adventure-input-layer {
+                bottom: 12px;
+                width: calc(100vw - 16px);
+            }
+            #adventure-command-form {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            #adventure-command-submit {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+    <div id="mobile-hint"></div>
+    <div id="language-switcher" aria-label="Language switcher">
+        <button class="language-switch-button" type="button" data-language="zh">中文</button>
+        <button class="language-switch-button" type="button" data-language="en">English</button>
+    </div>
+    <div id="adventure-input-layer" aria-hidden="true">
+        <div id="adventure-input-shell">
+            <div id="adventure-status">输入命令推进剧情。</div>
+            <form id="adventure-command-form">
+                <input
+                    id="adventure-command-input"
+                    type="text"
+                    inputmode="text"
+                    autocomplete="off"
+                    autocapitalize="off"
+                    spellcheck="false"
+                    placeholder="例如：查看主控终端"
+                >
+                <button id="adventure-command-submit" type="submit">发送命令</button>
+            </form>
+            <div id="adventure-quick-verbs">
+                <button class="quick-verb" type="button" data-verb-key="look">查看</button>
+                <button class="quick-verb" type="button" data-verb-key="go">前往</button>
+                <button class="quick-verb" type="button" data-verb-key="talk">对话</button>
+                <button class="quick-verb" type="button" data-verb-key="take">拿</button>
+                <button class="quick-verb" type="button" data-verb-key="use">使用</button>
+                <button class="quick-verb" type="button" data-command-key="inventory">背包</button>
+                <button class="quick-verb" type="button" data-command-key="objective">目标</button>
+                <button class="quick-verb" type="button" data-command-key="help">帮助</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="./story-data.js"></script>
+    <script src="./scene-manager.js"></script>
+    <script src="./ui-overlays.js"></script>
+    <script src="./adventure-engine.js"></script>
+    <script src="./game.js"></script>
+</body>
+</html>
